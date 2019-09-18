@@ -87,6 +87,10 @@ app.get('/api/voteOnSponsorTime', function (req, res) {
     //hash the ip 5000 times so no one can get it from the database
     let hashedIP = getHash(ip + globalSalt);
 
+    //check if the user registration limit has been hit
+    let userRegistrationLimitReached = isUserRegistrationLimitReached(nonAnonUserID, hashedIP);
+    if (userRegistrationLimitReached) res.sendStatus(429)
+
     //check if vote has already happened
     privateDB.prepare("SELECT type FROM votes WHERE userID = ? AND UUID = ?").get(userID, UUID, async function(err, votesRow) {
         if (err) console.log(err);
@@ -495,6 +499,35 @@ app.listen(config.port, function () {
     console.info(`Server is running on port ${config.port}`);
 });
 
+//checks if this ip has registered too many users recently (used new userIDs)
+//will add the user to the registration table if it is new
+//returns true if the limit has been passed, false otherwise
+function isUserRegistrationLimitReached(userID, hashedIP) {
+    let userAmountResult = await new Promise((resolve, reject) => {
+        privateDB.prepare("SELECT count(*) as userCount FROM sponsorTimes WHERE userID = ?").all(userID, (err, rows) => resolve({err, rows}));
+    });
+
+    if (userAmountResult.row.userCount == 0) {
+        //this is a new registration
+
+        let today = Date.now();
+        let yesterday = today - 86400000;
+        
+        //check if this ip has registered many times before
+        let registrationAmountResult = await new Promise((resolve, reject) => {
+            privateDB.prepare("SELECT count(*) as registrationCount FROM sponsorTimes WHERE hashedIP = ? AND time > ?").all(hashedIP, yesterday, (err, rows) => resolve({err, rows}));
+        });
+
+        //add this new user
+        privateDB.prepare("INSERT INTO sponsorTimes VALUES(?, ?)").run(hashedIP, today);
+
+        //if limit reached
+        return registrationAmountResult.row.registrationCount > 4;
+    }
+
+    return false;
+}
+
 function getVideoSegmentTimes(req, res) {
     // This is a parameter automatically added for
     // the old API.
@@ -590,6 +623,9 @@ function postVideoSegmentTimes(req, res) {
     //hash the ip 5000 times so no one can get it from the database
     let hashedIP = getHash(getIP(req) + globalSalt);
 
+    //check if the user registration limit has been hit
+    let userRegistrationLimitReached = isUserRegistrationLimitReached(userID, hashedIP);
+
     //get current time
     let timeSubmitted = Date.now();
 
@@ -612,7 +648,7 @@ function postVideoSegmentTimes(req, res) {
                         privateDB.prepare("SELECT count(*) as userCount FROM shadowBannedUsers WHERE userID = ?").get(userID, (err, row) => resolve({err, row}));
                     });
 
-                    let shadowBanned = shadowBanResult.row.userCount > 0;
+                    let shadowBanned = shadowBanResult.row.userCount > 0 || userRegistrationLimitReached;
 
                     //check if this user is on the vip list
                     let vipResult = await new Promise((resolve, reject) => {

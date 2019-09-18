@@ -1,4 +1,8 @@
 BEGIN TRANSACTION;
+CREATE TABLE IF NOT EXISTS "userRegistrations" (
+	"hashedIP"	TEXT NOT NULL,
+	"time"	INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS "vipUsers" (
 	"userID"	TEXT NOT NULL
 );
