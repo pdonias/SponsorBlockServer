@@ -518,11 +518,18 @@ function isUserRegistrationLimitReached(userID, hashedIP) {
             privateDB.prepare("SELECT count(*) as registrationCount FROM sponsorTimes WHERE hashedIP = ? AND time > ?").all(hashedIP, yesterday, (err, rows) => resolve({err, rows}));
         });
 
-        //add this new user
-        privateDB.prepare("INSERT INTO sponsorTimes VALUES(?, ?)").run(hashedIP, today);
+        if (registrationAmountResult.row.registrationCount > 4) {
+            //if limit is reached, return true
+            return true;
+        } else {
+            //otherwise, add this user to the registration list
+            //don't add them if the cap is hit, as they haven't succeeded in doing anything
+            //add this new user
+            privateDB.prepare("INSERT INTO sponsorTimes VALUES(?, ?)").run(hashedIP, today);
+        }
 
         //if limit reached
-        return registrationAmountResult.row.registrationCount > 4;
+        return ;
     }
 
     return false;
