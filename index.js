@@ -90,7 +90,7 @@ app.get('/api/voteOnSponsorTime', function (req, res) {
     //check if the user registration limit has been hit
     let userRegistrationLimitReached = isUserRegistrationLimitReached(nonAnonUserID, hashedIP);
     //if the limit is reached, pretend their vote was recorded
-    if (userRegistrationLimitReached) res.sendStatus(200)
+    if (userRegistrationLimitReached) res.sendStatus(429)
 
     //check if vote has already happened
     privateDB.prepare("SELECT type FROM votes WHERE userID = ? AND UUID = ?").get(userID, UUID, async function(err, votesRow) {
