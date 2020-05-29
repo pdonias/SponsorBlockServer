@@ -28,20 +28,20 @@ function getWeightedRandomChoiceForArray(choiceGroups, weights) {
       }
 
       //create a random choice for this group
-      let randomChoice = getWeightedRandomChoice(choiceGroups[i], weights, 1)
-      finalChoices.push(randomChoice.finalChoices);
-
-      for (let j = 0; j < randomChoice.choicesDealtWith.length; j++) {
-          choicesDealtWith.push(randomChoice.choicesDealtWith[j])
-      }
+      finalChoices.push(getWeightedRandomChoice(choiceGroups[i], weights, 1));
   }
 
   return {
       finalChoices: finalChoices,
-      choicesDealtWith: choicesDealtWith,
       weightSums: weightSums
   };
 }
+
+//multiplying by 10 makes around 13 votes the point where it the votes start not mattering as much (10 + 3)
+//The 3 makes -2 the minimum votes before being ignored completely
+//https://www.desmos.com/calculator/ljftxolg9j
+//this can be changed if this system increases in popularity.
+const DISTRIBUTION = votes => Math.sqrt((votes + 3) * 10)
 
 //gets a weighted random choice from the indexes array based on the weights.
 //amountOfChoices speicifies the amount of choices to return, 1 or more.
@@ -52,59 +52,34 @@ function getWeightedRandomChoice(choices, weights, amountOfChoices) {
       return null;
   }
 
-  let finalChoices = [];
-  let choicesDealtWith = [];
-
-  let sqrtWeightsList = [];
-  //the total of all the weights run through the cutom sqrt function
-  let totalSqrtWeights = 0;
-  for (let j = 0; j < choices.length; j++) {
-      //multiplying by 10 makes around 13 votes the point where it the votes start not mattering as much (10 + 3)
-      //The 3 makes -2 the minimum votes before being ignored completely
-      //https://www.desmos.com/calculator/ljftxolg9j
-      //this can be changed if this system increases in popularity.
-      let sqrtVote = Math.sqrt((weights[choices[j]] + 3) * 10);
-      sqrtWeightsList.push(sqrtVote)
-      totalSqrtWeights += sqrtVote;
-
-      //this index has now been deat with
-      choicesDealtWith.push(choices[j]);
+  if (choices.length === 1) {
+      return choices
   }
+
+  //the total of all the weights run through the custom sqrt function
+  let totalSqrtWeights = 0
+  const sqrtWeightsList = choices.map(choice => {
+      const weight = DISTRIBUTION(weights[choice])
+      totalSqrtWeights += weight
+      return weight
+  })
 
   //iterate and find amountOfChoices choices
-  let randomNumber = Math.random();
-  
-  //this array will keep adding to this variable each time one sqrt vote has been dealt with
-  //this is the sum of all the sqrtVotes under this index
-  let currentVoteNumber = 0;
-  for (let j = 0; j < sqrtWeightsList.length; j++) {
-      if (randomNumber > currentVoteNumber / totalSqrtWeights && randomNumber < (currentVoteNumber + sqrtWeightsList[j]) / totalSqrtWeights) {
-          //this one was randomly generated
-          finalChoices.push(choices[j]);
-          //remove that from original array, for next recursion pass if it happens
-          choices.splice(j, 1);
-          break;
+  const finalChoices = []
+  while (amountOfChoices-- > 0) {
+      const randomNumber = Math.random() * totalSqrtWeights
+      let currentVoteNumber = sqrtWeightsList[0]
+      let i = 0
+      while (currentVoteNumber < randomNumber) {
+          currentVoteNumber += sqrtWeightsList[i++]
       }
-
-      //add on to the count
-      currentVoteNumber += sqrtWeightsList[j];
-  }
-  
-  //add on the other choices as well using recursion
-  if (amountOfChoices > 1) {
-      let otherChoices = getWeightedRandomChoice(choices, weights, amountOfChoices - 1).finalChoices;
-      //add all these choices to the finalChoices array being returned
-      for (let i = 0; i < otherChoices.length; i++) {
-          finalChoices.push(otherChoices[i]);
-      }
+      totalSqrtWeights -= sqrtWeightsList[i]
+      sqrtWeightsList.splice(i, 1)
+      finalChoices.push(choices[i])
   }
 
-  return {
-      finalChoices: finalChoices,
-      choicesDealtWith: choicesDealtWith
-  };
+  return finalChoices
 }
-
 
 //This function will find sponsor times that are contained inside of eachother, called similar sponsor times
 //Only one similar time will be returned, randomly generated based on the sqrt of votes.
@@ -127,14 +102,12 @@ function getVoteOrganisedSponsorTimes(sponsorTimes, votes, UUIDs) {
       }
   })
 
-  //once all the groups have been created, get rid of the metadata and remove single-sponsor groups
-  const similarSponsorsGroups = groups.map(group => group.sponsors).filter(group => group.length > 1)
+  //once all the groups have been created, get rid of the metadata
+  const similarSponsorsGroups = groups.map(group => group.sponsors)
 
   let weightedRandomIndexes = getWeightedRandomChoiceForArray(similarSponsorsGroups, votes);
 
   let finalSponsorTimeIndexes = weightedRandomIndexes.finalChoices;
-  //the sponsor times either chosen to be added to finalSponsorTimeIndexes or chosen not to be added
-  let finalSponsorTimeIndexesDealtWith = weightedRandomIndexes.choicesDealtWith;
 
   let voteSums = weightedRandomIndexes.weightSums;
   //convert these into the votes
@@ -143,16 +116,9 @@ function getVoteOrganisedSponsorTimes(sponsorTimes, votes, UUIDs) {
       votes[finalSponsorTimeIndexes[i]] = voteSums[i];
   }
 
-  //find the indexes never dealt with and add them
-  for (let i = 0; i < sponsorTimes.length; i++) {
-      if (!finalSponsorTimeIndexesDealtWith.includes(i)) {
-          finalSponsorTimeIndexes.push(i)
-      }
-  }
-
-  //if there are too many indexes, find the best 4
+  //if there are too many indexes, find the best 8
   if (finalSponsorTimeIndexes.length > 8) {
-      finalSponsorTimeIndexes = getWeightedRandomChoice(finalSponsorTimeIndexes, votes, 8).finalChoices;
+      finalSponsorTimeIndexes = getWeightedRandomChoice(finalSponsorTimeIndexes, votes, 8);
   }
 
   //convert this to a final array to return
